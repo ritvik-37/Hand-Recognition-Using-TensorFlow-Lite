@@ -20,11 +20,18 @@ public class SignClient extends JFrame {
 
     private static final String SERVER_ADDRESS = "127.0.0.1";
     private static final int SERVER_PORT = 5000;
+    private static final int SOCKET_TIMEOUT_MS = 3000;
 
     private VideoCapture camera;
     private volatile boolean running = false;
-    private String currentPrediction = "...";
+    private volatile String currentPrediction = "...";
     private Thread recognitionThread;
+
+    // One connection is kept open for the whole session. Reconnecting per frame
+    // would churn through a socket five times a second.
+    private Socket socket;
+    private OutputStream socketOut;
+    private BufferedReader socketIn;
 
     public SignClient() {
         setTitle("Hand Sign Recognition");
@@ -53,8 +60,12 @@ public class SignClient extends JFrame {
                 startCameraAndPrediction(cameraPanel);
                 controlButton.setText("Stop Recognition");
             } else {
-                stopRecognition();
-                dispose(); // Closes the window
+                // Shut down off the EDT so a blocked socket read cannot freeze the UI.
+                controlButton.setEnabled(false);
+                new Thread(() -> {
+                    stopRecognition();
+                    SwingUtilities.invokeLater(this::dispose);
+                }, "shutdown").start();
             }
         });
         bottomPanel.add(controlButton, BorderLayout.WEST);
@@ -108,34 +119,70 @@ public class SignClient extends JFrame {
                     System.out.println("Failed to grab frame or frame is empty");
                 }
             }
-            camera.release();
-        });
+        }, "recognition");
         recognitionThread.start();
     }
 
     private void stopRecognition() {
         running = false;
-        if (recognitionThread != null) {
+        Thread worker = recognitionThread;
+        recognitionThread = null;
+        if (worker != null) {
             try {
-                recognitionThread.join(); // Wait for the thread to finish
+                // Bounded wait: the worker only ever blocks for the socket timeout.
+                worker.join(SOCKET_TIMEOUT_MS + 1000L);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
         }
+        closeConnection();
         if (camera != null) {
             camera.release();
         }
     }
 
+    /** Opens the session socket if it is not already connected. */
+    private void ensureConnected() throws IOException {
+        if (socket != null && !socket.isClosed() && socket.isConnected()) {
+            return;
+        }
+        closeConnection();
+        socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+        socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+        socket.setTcpNoDelay(true);
+        socketOut = socket.getOutputStream();
+        socketIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    }
+
+    private void closeConnection() {
+        try {
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (IOException ignored) {
+            // Nothing useful to do while tearing down.
+        } finally {
+            socket = null;
+            socketOut = null;
+            socketIn = null;
+        }
+    }
+
     private String getPredictionFromServer(byte[] frameBytes) {
-        try (Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
-             OutputStream out = socket.getOutputStream();
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-            out.write(ByteBuffer.allocate(4).putInt(frameBytes.length).array());
-            out.write(frameBytes);
-            String prediction = in.readLine();
-            return (prediction != null && !prediction.isEmpty()) ? prediction.toUpperCase() : "...";
+        try {
+            ensureConnected();
+            socketOut.write(ByteBuffer.allocate(4).putInt(frameBytes.length).array());
+            socketOut.write(frameBytes);
+            socketOut.flush();
+            String prediction = socketIn.readLine();
+            if (prediction == null) {
+                // Server closed the stream - drop the socket so the next frame reconnects.
+                closeConnection();
+                return "SERVER DOWN";
+            }
+            return prediction.isEmpty() ? "..." : prediction.toUpperCase();
         } catch (IOException e) {
+            closeConnection();
             return "SERVER DOWN";
         }
     }
