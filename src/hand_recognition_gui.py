@@ -25,7 +25,9 @@ class HandRecognitionGUI:
         self.prediction_label.pack(pady=10)
 
         # --- Gesture Recognizer --- 
-        model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model.tflite')
+        # The model lives at the repo root, next to server.py.
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_path = os.path.join(project_root, 'gesture_recognizer.task')
         options = GestureRecognizerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
             running_mode=VisionRunningMode.LIVE_STREAM,
