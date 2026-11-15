@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request
 
 # --- Server Configuration ---
 HOST = '127.0.0.1'
-PORT = 5000          # TCP socket the Java client connects to
+PORT = 5010          # TCP socket the Java client connects to
 HTTP_PORT = 5001     # Flask endpoint that serves prediction history
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
