@@ -80,7 +80,7 @@ remove that flag or the VM refuses to start.
    .venv\Scripts\python server.py
    ```
 
-   It listens on `127.0.0.1:5000` for the Java client and serves history on port `5001`.
+   It listens on `127.0.0.1:5010` for the Java client and serves history on port `5001`.
    Both bind to localhost only.
 
 2. **Run the Java client** — run `SignClient` from IntelliJ. The window opens; click

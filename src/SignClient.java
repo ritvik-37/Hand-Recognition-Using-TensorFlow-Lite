@@ -19,7 +19,7 @@ public class SignClient extends JFrame {
     static { System.loadLibrary(Core.NATIVE_LIBRARY_NAME); }
 
     private static final String SERVER_ADDRESS = "127.0.0.1";
-    private static final int SERVER_PORT = 5000;
+    private static final int SERVER_PORT = 5010;
     private static final int SOCKET_TIMEOUT_MS = 3000;
 
     private VideoCapture camera;
